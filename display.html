@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Affichage – Compteur d'attente (HTML)</title>
+  <style>
+    :root{
+      --bg: #0B1F3A;
+      --text: #ffffff;
+    }
+    *{ box-sizing: border-box; }
+    html,body{ height:100%; margin:0; }
+    body{ font-family: system-ui, -apple-system, Segoe UI, Roboto, Inter, Ubuntu, Cantarell, 'Helvetica Neue', Arial, 'Noto Sans', 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', sans-serif; background: var(--bg); color: var(--text); }
+    .screen{ display:flex; align-items: center; justify-content: center; height:100%; }
+    .screen-inner{ text-align: center; padding: 5vh 4vw; }
+    .screen-label{ font-size: 4vw; opacity:.75; letter-spacing: .06em; text-transform: uppercase; }
+    .big-number{
+      font-weight: 900;
+      font-size: 28vw;
+      line-height: 0.9;
+      color: #fff;
+      text-shadow: 0 12px 28px rgba(0,0,0,0.55);
+      transition: transform .2s ease, filter .2s ease;
+    }
+    .big-number.pulse{ transform: scale(1.04); filter: drop-shadow(0 0 24px rgba(255,255,255,.35)); }
+    .subtext{ margin-top: 2vh; font-size: 3.5vw; opacity: .85; }
+    @media (max-width: 680px) {
+      .screen-label{ font-size: 6.5vw; }
+      .subtext{ font-size: 5vw; }
+    }
+  </style>
+</head>
+<body>
+  <div class="screen">
+    <div class="screen-inner">
+      <div class="screen-label">Numéro</div>
+      <div id="big-number" class="big-number">0</div>
+      <div id="subtext" class="subtext">Veuillez vous présenter au guichet</div>
+    </div>
+  </div>
+
+  <script>
+    // === Lecture du numéro via localStorage + BroadcastChannel ===
+    const STORAGE_KEY = "ticket.current";
+    const STORAGE_TIME = "ticket.updatedAt";
+    const chan = ("BroadcastChannel" in window) ? new BroadcastChannel("ticket") : null;
+
+    const elBig = document.getElementById('big-number');
+    let pulseTimeout = null;
+    function pulse(){
+      elBig.classList.add('pulse');
+      clearTimeout(pulseTimeout);
+      pulseTimeout = setTimeout(()=> elBig.classList.remove('pulse'), 300);
+    }
+
+    function load(){
+      const v = parseInt(localStorage.getItem(STORAGE_KEY) || "0", 10);
+      return isNaN(v) ? 0 : v;
+    }
+    function setNumber(n){
+      const str = String(n);
+      if (elBig.textContent !== str){
+        elBig.textContent = str;
+        pulse();
+      }
+    }
+
+    // Init
+    setNumber(load());
+
+    // Synchro temps réel inter‑onglets
+    if (chan){
+      chan.addEventListener('message', (ev)=>{
+        if (ev.data && ev.data.type === "update"){
+          setNumber(ev.data.state?.current ?? 0);
+        }
+      });
+    }
+    window.addEventListener('storage', (ev)=>{
+      if (ev.key === STORAGE_KEY || ev.key === STORAGE_TIME){
+        setNumber(load());
+      }
+    });
+
+    // File protocol fallback: petit polling si nécessaire (toutes les 750ms)
+    const isFile = location.protocol === 'file:';
+    if (isFile){
+      setInterval(()=> setNumber(load()), 750);
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Back‑office – Compteur d'attente (HTML)</title>
+  <style>
+    :root{
+      --bg: #0B1F3A;
+      --bg-soft: #10294b;
+      --text: #ffffff;
+      --muted: #aab7c5;
+      --accent: #5cc8ff;
+      --danger: #ff6b6b;
+      --card: #0f233f;
+      --border: #1e375c;
+      --shadow: 0 10px 30px rgba(0,0,0,0.35);
+      --radius: 16px;
+      --font: system-ui, -apple-system, Segoe UI, Roboto, Inter, Ubuntu, Cantarell, 'Helvetica Neue', Arial, 'Noto Sans', 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', sans-serif;
+    }
+    *{ box-sizing: border-box; }
+    html,body{ height:100%; margin:0; }
+    body{ font-family: var(--font); color: var(--text); background: linear-gradient(180deg, var(--bg), var(--bg-soft)); }
+    .topbar{ padding: 16px 24px; border-bottom: 1px solid var(--border); background: rgba(0,0,0,0.15); backdrop-filter: blur(6px); position: sticky; top:0; z-index: 10;}
+    h1{ margin:0; font-size: 24px; font-weight: 700; }
+    .container{ max-width: 980px; margin: 32px auto; padding: 0 16px; }
+    .card{ background: var(--card); border:1px solid var(--border); border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow); }
+    .current-row{ display:flex; align-items: center; justify-content: space-between; gap:24px; flex-wrap: wrap; }
+    .label{ color: var(--muted); font-size:14px; letter-spacing: .4px; text-transform: uppercase; }
+    .number-lg{ font-size: 88px; font-weight: 800; letter-spacing: .02em; line-height: 1; margin: 8px 0 4px; }
+    .muted{ color: var(--muted); font-size: 13px; }
+    .controls{ display:flex; gap:12px; }
+    .btn{ padding: 12px 18px; border-radius: 12px; background: var(--accent); color:#00172c; border: none; font-weight: 700; cursor: pointer; box-shadow: var(--shadow); }
+    .btn:hover{ filter: brightness(1.05); }
+    .btn:active{ transform: translateY(1px); }
+    .btn-outline{ background: transparent; color: var(--text); border:1px solid var(--border); }
+    .btn-danger{ background: var(--danger); color:#2a0000; }
+    .set-row{ margin-top: 24px; }
+    .set-controls{ display:flex; gap:12px; align-items: center; flex-wrap: wrap; }
+    input[type="number"]{ background: #0a1a30; color: var(--text); border:1px solid var(--border); padding: 12px 14px; border-radius: 10px; width: 180px; box-shadow: inset 0 0 0 999px rgba(255,255,255,0.02); }
+    .hint{ margin-top: 16px; color: var(--muted); font-size: 13px; }
+    .row{ display:flex; gap:12px; align-items:center; flex-wrap: wrap; margin-top: 12px; }
+    .small{ font-size: 12px; color: var(--muted); }
+    a{ color: var(--accent); text-decoration: none; }
+    a:hover{ text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <h1>Back‑office – Compteur d'attente (HTML)</h1>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <div class="current-row">
+        <div>
+          <div class="label">Numéro en cours</div>
+          <div id="current-number" class="number-lg">0</div>
+          <div id="updated" class="muted"></div>
+        </div>
+        <div class="controls">
+          <button id="btn-decrement" class="btn btn-outline">− 1</button>
+          <button id="btn-increment" class="btn">+ 1</button>
+        </div>
+      </div>
+
+      <div class="set-row">
+        <label for="setValue" class="label">Aller au numéro</label>
+        <div class="set-controls">
+          <input id="setValue" type="number" min="0" max="99999" placeholder="Ex: 42"/>
+          <button id="btn-set" class="btn">Valider</button>
+          <button id="btn-reset" class="btn btn-danger">Réinitialiser (0)</button>
+        </div>
+      </div>
+
+      <div class="row small">
+        Ouvrir l'écran d'affichage : <a href="./display.html" target="_blank" rel="noopener">display.html</a>
+      </div>
+
+      <div class="hint">
+        Raccourcis clavier : ← (−1), → (+1), R (reset), Entrée (valider la saisie).
+      </div>
+    </section>
+  </main>
+
+  <script>
+    // === Stockage & diffusion inter‑onglets (sans serveur) ===
+    const STORAGE_KEY = "ticket.current";
+    const STORAGE_TIME = "ticket.updatedAt";
+
+    // BroadcastChannel si dispo (meilleure synchro), sinon fallback 'storage'
+    const chan = ("BroadcastChannel" in window) ? new BroadcastChannel("ticket") : null;
+
+    function loadState(){
+      const current = parseInt(localStorage.getItem(STORAGE_KEY) || "0", 10);
+      const updatedAt = localStorage.getItem(STORAGE_TIME) || null;
+      return { current: isNaN(current) ? 0 : current, updatedAt };
+    }
+    function saveState(state){
+      localStorage.setItem(STORAGE_KEY, String(state.current));
+      localStorage.setItem(STORAGE_TIME, state.updatedAt || new Date().toISOString());
+      if (chan) chan.postMessage({ type: "update", state });
+    }
+
+    // UI
+    const elCurrent = document.getElementById('current-number');
+    const elUpdated = document.getElementById('updated');
+    const btnInc = document.getElementById('btn-increment');
+    const btnDec = document.getElementById('btn-decrement');
+    const btnSet = document.getElementById('btn-set');
+    const btnReset = document.getElementById('btn-reset');
+    const inputSet = document.getElementById('setValue');
+
+    function formatDate(iso){
+      if (!iso) return "";
+      const d = new Date(iso);
+      if (isNaN(d)) return "";
+      return "Mis à jour : " + d.toLocaleString();
+    }
+
+    function render(state){
+      elCurrent.textContent = state.current;
+      elUpdated.textContent = formatDate(state.updatedAt);
+    }
+
+    function updateAndSave(newVal){
+      const s = { current: Math.max(0, Math.min(99999, newVal)), updatedAt: new Date().toISOString() };
+      saveState(s);
+      render(s);
+    }
+
+    // Init
+    render(loadState());
+
+    // Actions
+    btnInc.addEventListener('click', () => updateAndSave(loadState().current + 1));
+    btnDec.addEventListener('click', () => updateAndSave(loadState().current - 1));
+    btnReset.addEventListener('click', () => updateAndSave(0));
+    btnSet.addEventListener('click', () => {
+      const v = parseInt(inputSet.value, 10);
+      if (!Number.isNaN(v) && v >= 0) updateAndSave(v);
+    });
+    inputSet.addEventListener('keydown', (e)=>{ if(e.key==='Enter') btnSet.click(); });
+
+    // Raccourcis clavier
+    window.addEventListener('keydown', (e)=>{
+      if (e.key === 'ArrowRight') updateAndSave(loadState().current + 1);
+      if (e.key === 'ArrowLeft')  updateAndSave(loadState().current - 1);
+      if (e.key.toLowerCase() === 'r') updateAndSave(0);
+    });
+
+    // Écoute des mises à jour venant d'autres onglets
+    if (chan){
+      chan.addEventListener('message', (ev)=>{
+        if (ev.data && ev.data.type === "update") render(ev.data.state);
+      });
+    }
+    window.addEventListener('storage', (ev)=>{
+      if (ev.key === STORAGE_KEY || ev.key === STORAGE_TIME){
+        render(loadState());
+      }
+    });
+  </script>
+</body>
+</html>
